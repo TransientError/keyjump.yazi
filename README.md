@@ -1,5 +1,14 @@
 # keyjump.yazi
 
+> [!NOTE]
+> **This is a maintained fork of [DreamMaoMao/keyjump.yazi](https://gitee.com/DreamMaoMao/keyjump.yazi).**
+>
+> The upstream plugin crashes when the number of visible files exceeds the
+> hardcoded label array size (~109 in global mode), which is common on tall or
+> vertical monitors. This fork fixes the crash by introducing **label group
+> cycling** — labels are reused across groups and you can press `<Tab>` / `<S-Tab>`
+> to cycle between them, similar to [leap.nvim](https://github.com/ggandor/leap.nvim).
+
 A Yazi plugin that allows jumping to a line by typing a hint character, much like hop.nvim
 
 > [!NOTE]

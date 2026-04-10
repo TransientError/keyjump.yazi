@@ -143,6 +143,7 @@ local INPUT_CANDS = {
 	{ on = "<A-j>" }, { on = "<A-k>" },
 	{ on = "<C-j>" }, { on = "<C-k>" },
 	{ on = "J" }, { on = "K" },
+	{ on = "<Tab>" }, { on = "<S-Tab>" },
 
 }
 
@@ -154,6 +155,7 @@ local INPUT_KEY = {
 	"<A-j>", "<A-k>" ,
 	"<C-j>", "<C-k>" ,
 	"J", "K",
+	"<Tab>", "<S-Tab>",
 }
 
 
@@ -220,7 +222,7 @@ local function count_files(url, max)
 		local i, handle = 0, io.popen(cmd)
 		for _ in handle:lines() do
 			i = i + 1
-			if i == max then
+			if max ~= math.huge and i == max then
 				break
 			end
 		end
@@ -243,6 +245,19 @@ local function count_files(url, max)
 	end
 end
 
+-- Compute the label and group for a file at position pos in a given label array
+local function get_label_for_pos(label_array, pos, group_offset)
+	local label_count = #label_array
+	local group = math.ceil(pos / label_count) -- 1-based group number
+	local label_idx = ((pos - 1) % label_count) + 1
+	return label_array[label_idx], group, label_idx
+end
+
+local function get_max_group(file_count, label_count)
+	if file_count == 0 or label_count == 0 then return 1 end
+	return math.ceil(file_count / label_count)
+end
+
 local toggle_ui = ya.sync(function(st)
 
 	if st.keep_hook then
@@ -263,28 +278,33 @@ local toggle_ui = ya.sync(function(st)
 		local file = self._file
 		local icon = file:icon()
 		local span_icon_before = file.is_hovered and ui.Span(file:icon().text .. " ") or ui.Span(file:icon().text .. " "):style(icon.style)
+		local active_group = (st.group_offset or 0) + 1
 		
 		if st.type == "global" then
 			local pos, view = rel_position(file, "all")
 			if pos == nil then
 				return st.icon(self, file)
-			elseif view == "current" then
-				if st.double_first_key ~= nil and GLOBAL_CURRENT_DOUBLE_KEYS[pos]:sub(1,1) == st.double_first_key then
-					return ui.Line {span_icon_before, ui.Span(GLOBAL_CURRENT_DOUBLE_KEYS[pos]:sub(1,1)):fg(st.opt_first_key_fg),ui.Span(GLOBAL_CURRENT_DOUBLE_KEYS[pos]:sub(2,2) .. " "):fg(st.opt_icon_fg)}
-				else
-					return ui.Line {span_icon_before, ui.Span(GLOBAL_CURRENT_DOUBLE_KEYS[pos].." "):fg(st.opt_icon_fg)}
-				end
+			end
+
+			local label_array
+			if view == "current" then
+				label_array = GLOBAL_CURRENT_DOUBLE_KEYS
 			elseif view == "parent" then
-				if st.double_first_key ~= nil and GLOBAL_PARENT_DOUBLE_KEYS[pos]:sub(1,1) == st.double_first_key then
-					return ui.Line {span_icon_before, ui.Span(GLOBAL_PARENT_DOUBLE_KEYS[pos]:sub(1,1)):fg(st.opt_first_key_fg),ui.Span(GLOBAL_PARENT_DOUBLE_KEYS[pos]:sub(2,2) .. " "):fg(st.opt_icon_fg)}
-				else
-					return ui.Line {span_icon_before, ui.Span(GLOBAL_PARENT_DOUBLE_KEYS[pos].." "):fg(st.opt_icon_fg)}
-				end
+				label_array = GLOBAL_PARENT_DOUBLE_KEYS
 			elseif view == "preview" then
-				if st.double_first_key ~= nil and GLOBAL_PREVIEW_DOUBLE_KEYS[pos]:sub(1,1) == st.double_first_key then
-					return ui.Line {span_icon_before, ui.Span(GLOBAL_PREVIEW_DOUBLE_KEYS[pos]:sub(1,1)):fg(st.opt_first_key_fg),ui.Span(GLOBAL_PREVIEW_DOUBLE_KEYS[pos]:sub(2,2) .. " "):fg(st.opt_icon_fg)}
+				label_array = GLOBAL_PREVIEW_DOUBLE_KEYS
+			end
+
+			if label_array then
+				local label, group = get_label_for_pos(label_array, pos, st.group_offset)
+				if group == active_group then
+					if st.double_first_key ~= nil and label:sub(1,1) == st.double_first_key then
+						return ui.Line {span_icon_before, ui.Span(label:sub(1,1)):fg(st.opt_first_key_fg),ui.Span(label:sub(2,2) .. " "):fg(st.opt_icon_fg)}
+					else
+						return ui.Line {span_icon_before, ui.Span(label.." "):fg(st.opt_icon_fg)}
+					end
 				else
-					return ui.Line {span_icon_before, ui.Span(GLOBAL_PREVIEW_DOUBLE_KEYS[pos].." "):fg(st.opt_icon_fg)}
+					return ui.Line {span_icon_before, ui.Span("· "):fg("#666666")}
 				end
 			end
 		else
@@ -292,10 +312,15 @@ local toggle_ui = ya.sync(function(st)
 			if not pos then
 				return st.icon(self, file)
 			elseif st.current_num > #SINGLE_KEYS then
-				if st.double_first_key ~= nil and NORMAL_DOUBLE_KEYS[pos]:sub(1,1) == st.double_first_key then
-					return ui.Line {span_icon_before, ui.Span(NORMAL_DOUBLE_KEYS[pos]:sub(1,1)):fg(st.opt_first_key_fg),ui.Span(NORMAL_DOUBLE_KEYS[pos]:sub(2,2) .. " "):fg(st.opt_icon_fg)}
+				local label, group = get_label_for_pos(NORMAL_DOUBLE_KEYS, pos, st.group_offset)
+				if group == active_group then
+					if st.double_first_key ~= nil and label:sub(1,1) == st.double_first_key then
+						return ui.Line {span_icon_before, ui.Span(label:sub(1,1)):fg(st.opt_first_key_fg),ui.Span(label:sub(2,2) .. " "):fg(st.opt_icon_fg)}
+					else
+						return ui.Line {span_icon_before, ui.Span(label.." "):fg(st.opt_icon_fg)}
+					end
 				else
-					return ui.Line {span_icon_before, ui.Span(NORMAL_DOUBLE_KEYS[pos].." "):fg(st.opt_icon_fg)}
+					return ui.Line {span_icon_before, ui.Span("· "):fg("#666666")}
 				end
 			else
 				return ui.Line {span_icon_before,ui.Span(SINGLE_KEYS[pos].." "):fg(st.opt_icon_fg)}
@@ -305,8 +330,12 @@ local toggle_ui = ya.sync(function(st)
 
 	Status.mode = function(self)
 		local style = self:style()
+		local group_text = ""
+		if st.max_groups and st.max_groups > 1 then
+			group_text = " [" .. tostring((st.group_offset or 0) + 1) .. "/" .. tostring(st.max_groups) .. "]"
+		end
 		return ui.Line {
-			ui.Span(" KJ-" .. tostring(cx.active.mode):upper() .. " "):style(style.main),
+			ui.Span(" KJ-" .. tostring(cx.active.mode):upper() .. group_text .. " "):style(style.main),
 		}
 	end
 
@@ -327,7 +356,7 @@ local function count_preview_files(st)
 	local h = cx.active.current.hovered
 	-- TODO:under_cursor_file maybe nil,because aync task,floder may not ready
 	if h and h.cha.is_dir then
-		st.preview_num = count_files(tostring(h.url), #GLOBAL_PARENT_DOUBLE_KEYS)
+		st.preview_num = count_files(tostring(h.url), math.huge)
 	else
 		st.preview_num = 0
 	end
@@ -488,80 +517,92 @@ local update_double_first_key = ya.sync(function(state, str)
 	ya.mgr_emit("peek", { force = true })
 end)
 
-local recaculate_preview_num  = ya.sync(function(state, cwd)
-	state.preview_num = count_files(cwd, #GLOBAL_PREVIEW_DOUBLE_KEYS)
+local update_group_offset = ya.sync(function(state, offset)
+	state.group_offset = offset
+	ya.mgr_emit("peek", { force = true })
+	ui.render()
 end)
 
-local function read_input_todo (arg_current_num,arg_parent_num,arg_preview_num,arg_type)
+local recaculate_preview_num= ya.sync(function(state, cwd)
+	state.preview_num = count_files(cwd, math.huge)
+end)
 
-	local current_num = tonumber(arg_current_num)
-	local parent_num = tonumber(arg_parent_num~= nil and arg_parent_num or "0")
-	local preview_num = tonumber(arg_preview_num ~= nil and arg_preview_num or "0")
-	local type = arg_type
+local function build_cands(current_num, parent_num, preview_num, type, group_offset)
 	local current_cands, parent_cands, preview_cands, cands = {}, {}, {}, {}
-	local cand = nil
 	local is_signal_cand = true
-	local pos,pos2
-	local key_num_count = 0
-	local key,double_key
 	local first_key_of_lable = {}
 	local special_and_go_key = {}
 	local cands_count = 0
 
+	-- For group cycling, compute which files are in the active group for a given label array
+	local function get_group_slice(label_array, total_count)
+		local lc = #label_array
+		local start_idx = group_offset * lc + 1
+		local end_idx = math.min((group_offset + 1) * lc, total_count)
+		local slice = {}
+		for i = start_idx, end_idx do
+			local label_idx = ((i - 1) % lc) + 1
+			table.insert(slice, {label = label_array[label_idx], abs_pos = i})
+		end
+		return slice
+	end
 
 	-- generate cands of entry of current window
 	if current_num == 0 then
 		current_cands = {}
-	elseif type == "global" then -- global mode disable signal key
+	elseif type == "global" then
 		is_signal_cand = false
-		current_cands = { table.unpack(GLOBAL_CURRENT_DOUBLE_KEYS, 1, current_num) }
+		current_cands = get_group_slice(GLOBAL_CURRENT_DOUBLE_KEYS, current_num)
 	elseif current_num > #SINGLE_KEYS then
 		is_signal_cand = false
-		current_cands = { table.unpack(NORMAL_DOUBLE_KEYS, 1, current_num) }
+		current_cands = get_group_slice(NORMAL_DOUBLE_KEYS, current_num)
 	else
-		current_cands = { table.unpack(SINGLE_KEYS, 1, current_num) }
+		current_cands = {}
+		for i = 1, current_num do
+			table.insert(current_cands, {label = SINGLE_KEYS[i], abs_pos = i})
+		end
 	end
 
 	-- generate cands of entry of parent window
-	if parent_num ~= nil and parent_num ~= 0 then
+	if parent_num ~= nil and parent_num ~= 0 and type == "global" then
 		is_signal_cand = false
-		parent_cands = { table.unpack(GLOBAL_PARENT_DOUBLE_KEYS, 1, parent_num) }
+		parent_cands = get_group_slice(GLOBAL_PARENT_DOUBLE_KEYS, parent_num)
 	else
 		parent_cands = {}
-		parent_num = 0
 	end
 
 	-- generate cands of entry of preview window
-	if preview_num ~= nil and preview_num ~= 0 then
+	if preview_num ~= nil and preview_num ~= 0 and type == "global" then
 		is_signal_cand = false
-		preview_cands = { table.unpack(GLOBAL_PREVIEW_DOUBLE_KEYS, 1, preview_num) }
+		preview_cands = get_group_slice(GLOBAL_PREVIEW_DOUBLE_KEYS, preview_num)
 	else
 		preview_cands = {}
-		preview_num = 0
 	end
+
+	-- Build the cands mapping: label -> {pane, abs_pos}
+	-- Also build a flat pos mapping for apply() compatibility:
+	-- We encode: current files as abs_pos, parent as current_num + abs_pos, preview as current_num + parent_num + abs_pos
+	-- This way apply() logic stays the same
 
 	--attach current cands to cands table
 	for i = 1, #current_cands do
-		local seca = current_cands[i]
-		first_key_of_lable[seca:sub(1,1)] = ""
-		cands_count =  cands_count + 1
-		cands[seca] = cands_count
+		local entry = current_cands[i]
+		first_key_of_lable[entry.label:sub(1,1)] = ""
+		cands[entry.label] = entry.abs_pos  -- 1..current_num range
 	end
 
 	--attach parent cands to cands table
 	for i = 1, #parent_cands do
-		local seca = parent_cands[i]
-		first_key_of_lable[seca:sub(1,1)] = ""
-		cands_count =  cands_count + 1
-		cands[seca] = cands_count
+		local entry = parent_cands[i]
+		first_key_of_lable[entry.label:sub(1,1)] = ""
+		cands[entry.label] = current_num + entry.abs_pos  -- current_num+1..current_num+parent_num range
 	end
 
 	--attach preview cands to cands table
 	for i = 1, #preview_cands do
-		local seca = preview_cands[i]
-		first_key_of_lable[seca:sub(1,1)] = ""
-		cands_count =  cands_count + 1
-		cands[seca] = cands_count
+		local entry = preview_cands[i]
+		first_key_of_lable[entry.label:sub(1,1)] = ""
+		cands[entry.label] = current_num + parent_num + entry.abs_pos  -- current_num+parent_num+1.. range
 	end
 
 	--attach go cands to cands table
@@ -569,20 +610,48 @@ local function read_input_todo (arg_current_num,arg_parent_num,arg_preview_num,a
 		for i = 1, #GO_MENU_KEYS do
 			local seca = GO_MENU_KEYS[i]
 			first_key_of_lable[seca] = ""
-			cands_count =  cands_count + 1
-			cands[seca] = cands_count
+			cands[seca] = current_num + parent_num + preview_num + i
 			special_and_go_key[seca] = ""
 		end
 	end
 
+	local go_num = type == "global" and #GO_MENU_KEYS or 0
+
 	--attach special cands to cands table
-	for i = 1, #SPECIAL_KEYS do --attach special key
+	for i = 1, #SPECIAL_KEYS do
 		local seca = SPECIAL_KEYS[i]
 		first_key_of_lable[seca] = ""
-		cands_count =  cands_count + 1
-		cands[seca] = cands_count
+		cands[seca] = current_num + parent_num + preview_num + go_num + i
 		special_and_go_key[seca] = ""
 	end
+
+	return {
+		cands = cands,
+		is_signal_cand = is_signal_cand,
+		first_key_of_lable = first_key_of_lable,
+		special_and_go_key = special_and_go_key,
+	}
+end
+
+local function read_input_todo (arg_current_num,arg_parent_num,arg_preview_num,arg_type,arg_max_groups)
+
+	local current_num = tonumber(arg_current_num)
+	local parent_num = tonumber(arg_parent_num~= nil and arg_parent_num or "0")
+	local preview_num = tonumber(arg_preview_num ~= nil and arg_preview_num or "0")
+	local type = arg_type
+	local max_groups = tonumber(arg_max_groups or 1)
+	local group_offset = 0
+
+	local built = build_cands(current_num, parent_num, preview_num, type, group_offset)
+	local cands = built.cands
+	local is_signal_cand = built.is_signal_cand
+	local first_key_of_lable = built.first_key_of_lable
+	local special_and_go_key = built.special_and_go_key
+
+	local cand = nil
+	local pos,pos2
+	local key_num_count = 0
+	local key,double_key
 
 	while true do
 		cand = ya.which { cands = INPUT_CANDS, silent = true }
@@ -596,6 +665,31 @@ local function read_input_todo (arg_current_num,arg_parent_num,arg_preview_num,a
 			key = INPUT_KEY[cand]	
 			pos = cands[key]
 			break
+		end
+
+		-- handle Tab/S-Tab for group cycling
+		if INPUT_KEY[cand] == "<Tab>" and max_groups > 1 then
+			group_offset = (group_offset + 1) % max_groups
+			update_group_offset(group_offset)
+			built = build_cands(current_num, parent_num, preview_num, type, group_offset)
+			cands = built.cands
+			first_key_of_lable = built.first_key_of_lable
+			special_and_go_key = built.special_and_go_key
+			key_num_count = 0
+			update_double_first_key(nil)
+			goto nextkey
+		end
+
+		if INPUT_KEY[cand] == "<S-Tab>" and max_groups > 1 then
+			group_offset = (group_offset - 1) % max_groups
+			update_group_offset(group_offset)
+			built = build_cands(current_num, parent_num, preview_num, type, group_offset)
+			cands = built.cands
+			first_key_of_lable = built.first_key_of_lable
+			special_and_go_key = built.special_and_go_key
+			key_num_count = 0
+			update_double_first_key(nil)
+			goto nextkey
 		end
 
 		-- hit singal key or specail key in singal label mode
@@ -666,7 +760,8 @@ local init_global_action = ya.sync(function(state,arg_times)
 	-- "once" or nil,nil means to don't auto exit
 	state.times = arg_times
 	state.type = "global"
-	-- caculate file numbers of current window
+	state.group_offset = 0
+	-- caculate file numbers of current window (actual count, not clamped)
 	state.current_num = #cx.active.current.window
 	if cx.active.parent and cx.active.parent.window then
 		state.parent_num = #cx.active.parent.window
@@ -676,7 +771,14 @@ local init_global_action = ya.sync(function(state,arg_times)
 
 	count_preview_files(state)
 
-	return {state.current_num, state.parent_num, state.preview_num}
+	-- compute max groups across all panes
+	local max_g = 1
+	max_g = math.max(max_g, get_max_group(state.current_num, #GLOBAL_CURRENT_DOUBLE_KEYS))
+	max_g = math.max(max_g, get_max_group(state.parent_num, #GLOBAL_PARENT_DOUBLE_KEYS))
+	max_g = math.max(max_g, get_max_group(state.preview_num, #GLOBAL_PREVIEW_DOUBLE_KEYS))
+	state.max_groups = max_g
+
+	return {state.current_num, state.parent_num, state.preview_num, state.max_groups}
 
 end)
 
@@ -684,11 +786,18 @@ local init_normal_action = ya.sync(function(state,action)
 
 	state.current_num = #cx.active.current.window
 	if state.current_num < ui.Rect.default.h then -- Maybe the folder has not been full loaded yet
-		state.current_num = count_files(cx.active.current.cwd, #NORMAL_DOUBLE_KEYS)
+		state.current_num = count_files(cx.active.current.cwd, math.huge)
+	end
+
+	state.group_offset = 0
+	if state.current_num > #SINGLE_KEYS then
+		state.max_groups = get_max_group(state.current_num, #NORMAL_DOUBLE_KEYS)
+	else
+		state.max_groups = 1
 	end
 
 	state.type = action
-	return state.current_num
+	return {state.current_num, state.max_groups}
 end)
 
 local go_again = ya.sync(function(state)
@@ -713,6 +822,8 @@ local clear_state = ya.sync(function (state)
 	state.parent_num = nil
 	state.type = nil
 	state.double_first_key = nil
+	state.group_offset = nil
+	state.max_groups = nil
 end)
 
 local get_go_table = ya.sync(function (state)
@@ -768,16 +879,16 @@ return {
 
 		-- enter normal, keep or select mode
 		if not action or action == "keep" or action == "select" then
-			local current_num = init_normal_action(action)
+			local data = init_normal_action(action)
 			toggle_ui()
-			want_exit = read_input_todo(current_num, "0", "0", action)
+			want_exit = read_input_todo(data[1], "0", "0", action, data[2])
 		end
 		-- enter global mode
 		if action == "global" then
 			local times = args[2]
 			local data = init_global_action(times)
 			toggle_ui()
-			want_exit = read_input_todo(data[1], data[2], data[3], action)
+			want_exit = read_input_todo(data[1], data[2], data[3], action, data[4])
 		end
 		
 		if want_exit == nil then
