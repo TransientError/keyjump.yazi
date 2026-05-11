@@ -661,7 +661,7 @@ local function read_input_todo (arg_current_num,arg_parent_num,arg_preview_num,a
 		end
 
 		-- hit exit easyjump
-		if INPUT_KEY[cand] == "<Esc>" or INPUT_KEY[cand] == "z"  then
+		if INPUT_KEY[cand] == "<Esc>" or (INPUT_KEY[cand] == "z" and key_num_count == 0) then
 			key = INPUT_KEY[cand]	
 			pos = cands[key]
 			break
